@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0F172A">
+<title>Library Claim Sweep</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   Design system: "Glassmorphism Minimalist"
+   Brand #6366F1 · Secondary #10B981 · Danger #EF4444 · Warning #F59E0B
+   App #0F172A · Surface #1E293B @ 85% · Text #F8FAFC / #94A3B8
+   Text-on-dark variants (--*-text) keep small text at WCAG AA contrast.
+   ========================================================================= */
+:root {
+  --bg:#0F172A; --surface:rgba(30,41,59,.85); --surface-solid:#1E293B; --sunken:rgba(15,23,42,.55);
+  --line:rgba(255,255,255,.1); --text:#F8FAFC; --muted:#94A3B8;
+  --primary:#6366F1; --primary-text:#A5B4FC; --primary-soft:rgba(99,102,241,.14);
+  --secondary:#10B981; --secondary-text:#34D399; --secondary-soft:rgba(16,185,129,.14);
+  --danger:#EF4444; --danger-text:#FCA5A5; --danger-soft:rgba(239,68,68,.14);
+  --warn:#F59E0B; --warn-text:#FBBF24; --warn-soft:rgba(245,158,11,.14);
+  --shadow:0 8px 32px 0 rgba(0,0,0,.08);
+  --r-card:16px; --r-ctl:12px; --side:248px;
+  --ease:all .2s ease-in-out;
+  --font:Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme:dark;
+}
+:root[data-theme="light"] {
+  --bg:#F1F5F9; --surface:rgba(255,255,255,.85); --surface-solid:#FFFFFF; --sunken:rgba(241,245,249,.9);
+  --line:rgba(0,0,0,.05); --text:#0F172A; --muted:#475569;
+  --primary-text:#4F46E5; --secondary-text:#047857; --danger-text:#B91C1C; --warn-text:#B45309;
+  color-scheme:light;
+}
+
+/* ---- Base ---- */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:84px}
+body{margin:0;font:400 .875rem/1.55 var(--font);color:var(--text);background:var(--bg);min-height:100vh}
+/* Soft colour fields behind the glass give it depth. */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(40rem 30rem at 85% -10%,rgba(99,102,241,.22),transparent 60%),
+             radial-gradient(36rem 28rem at -10% 110%,rgba(16,185,129,.14),transparent 60%)}
+h1{font-size:1.875rem;font-weight:700;letter-spacing:-.02em;line-height:1.2;margin:0;color:var(--text)}
+h2{font-size:1.25rem;font-weight:600;letter-spacing:-.01em;margin:0;color:var(--text)}
+p{margin:0}
+a{color:var(--primary-text)}
+.body{font-size:.875rem;color:var(--muted)}
+.cap{font-size:.75rem;font-weight:500;color:var(--muted)}
+.ic{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px}
+.skip{position:absolute;left:-999px;top:8px;z-index:50;background:var(--primary);color:#fff;padding:8px 12px;border-radius:8px}
+.skip:focus{left:8px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* ---- Glass surfaces ---- */
+.glass{background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2)}
+.card{border-radius:var(--r-card);padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card-head .body{margin-top:2px}
+
+/* ---- Sidebar ---- */
+.sidebar{position:fixed;inset:0 auto 0 0;width:var(--side);z-index:40;display:flex;flex-direction:column;gap:24px;
+  padding:20px 14px;border-radius:0;border-width:0 1px 0 0;transition:transform .25s ease-in-out}
+.brand{display:flex;align-items:center;gap:12px;padding:4px 8px}
+.logo{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(135deg,var(--primary),#8B5CF6);box-shadow:0 6px 20px rgba(99,102,241,.35)}
+.brand b{display:block;font-size:.95rem;font-weight:600}
+nav{display:grid;gap:4px}
+.nav{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r-ctl);
+  color:var(--muted);text-decoration:none;font-weight:500;transition:var(--ease)}
+.nav:hover{background:var(--primary-soft);color:var(--text);transform:translateY(-2px)}
+.nav:active{transform:scale(.95)}
+.nav.active{background:var(--primary-soft);color:var(--text)}
+.nav.active::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:4px;border-radius:0 4px 4px 0;background:var(--primary)}
+.nav.active .ic{color:var(--primary-text)}
+.side-foot{margin-top:auto;border-radius:var(--r-ctl);padding:12px;background:var(--sunken);border:1px solid var(--line)}
+.side-foot .row{display:flex;align-items:center;gap:8px;font-weight:500}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+body.live .live-dot{background:var(--secondary);box-shadow:0 0 0 4px var(--secondary-soft)}
+.scrim{position:fixed;inset:0;z-index:35;background:rgba(2,6,23,.55);opacity:0;pointer-events:none;transition:opacity .2s}
+
+/* ---- Shell + top bar ---- */
+.shell{margin-left:var(--side);min-width:0}
+.topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:12px 28px;
+  border-radius:0;border-width:0 0 1px 0}
+.search{flex:1;max-width:420px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:var(--r-ctl);
+  background:var(--sunken);border:1px solid var(--line);color:var(--muted);transition:var(--ease)}
+.search:focus-within{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary)}
+.search input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font:inherit;padding:10px 0}
+.top-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.dd{position:relative}
+.icon-btn{position:relative;width:40px;height:40px;display:grid;place-items:center;border-radius:var(--r-ctl);
+  background:transparent;border:1px solid var(--line);color:var(--text);cursor:pointer;transition:var(--ease)}
+.icon-btn:hover{background:var(--primary-soft);transform:translateY(-2px)}
+.icon-btn:active{transform:scale(.95)}
+.badge-count{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;
+  background:var(--danger);color:#fff;font-size:.6875rem;font-weight:700;display:grid;place-items:center}
+.profile{display:flex;align-items:center;gap:10px;padding:4px 10px 4px 4px;border-radius:var(--r-ctl);cursor:pointer;
+  background:transparent;border:1px solid var(--line);color:var(--text);font:inherit;transition:var(--ease)}
+.profile:hover{background:var(--primary-soft);transform:translateY(-2px)}
+.profile:active{transform:scale(.95)}
+.avatar{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:.75rem;
+  color:#fff;background:linear-gradient(135deg,var(--secondary),#0EA5E9)}
+.pmeta{display:grid;text-align:left;line-height:1.2}
+.pmeta b{font-size:.8125rem;font-weight:600}
+.panel{position:absolute;right:0;top:calc(100% + 8px);width:300px;max-width:calc(100vw - 32px);border-radius:var(--r-card);
+  padding:8px;z-index:45;background:var(--surface-solid);animation:pop .16s ease-out}
+@keyframes pop{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+.panel-head{padding:8px 10px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.panel ul{list-style:none;margin:0;padding:0;max-height:320px;overflow:auto}
+.panel li{padding:10px;border-radius:10px;display:grid;gap:2px}
+.panel li+li{border-top:1px solid var(--line)}
+.panel .row{display:flex;justify-content:space-between;gap:12px;padding:10px;border-radius:10px}
+.panel-link{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border-radius:10px;border:0;background:none;
+  color:var(--text);font:inherit;text-decoration:none;cursor:pointer;transition:var(--ease)}
+.panel-link:hover{background:var(--primary-soft)}
+.panel-link:active{transform:scale(.97)}
+
+/* ---- Main ---- */
+main{padding:28px;display:flex;flex-direction:column;gap:24px;max-width:1440px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.alert{border-radius:var(--r-ctl);padding:12px 14px;border:1px solid;font-weight:500}
+.alert:empty{display:none}
+.alert.bad{background:var(--danger-soft);border-color:rgba(239,68,68,.35);color:var(--danger-text)}
+.alert.warn{background:var(--warn-soft);border-color:rgba(245,158,11,.35);color:var(--warn-text)}
+.alerts{display:grid;gap:8px}
+.alerts:not(:has(.alert:not(:empty))){display:none}
+
+/* ---- Buttons ---- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:var(--r-ctl);
+  font:600 .875rem var(--font);color:var(--text);background:var(--sunken);border:1px solid var(--line);
+  cursor:pointer;text-decoration:none;transition:var(--ease)}
+.btn:hover:not(:disabled){transform:translateY(-2px);background:rgba(148,163,184,.12)}
+.btn:active:not(:disabled){transform:scale(.95)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 6px 20px rgba(99,102,241,.3)}
+.btn.primary:hover:not(:disabled){background:#5558E8}
+.btn.secondary{background:var(--secondary);border-color:var(--secondary);color:#022C22}
+.btn.secondary:hover:not(:disabled){background:#0EA572}
+.btn.danger{background:var(--danger-soft);border-color:rgba(239,68,68,.4);color:var(--danger-text)}
+.btn.lg{padding:12px 20px;font-size:.9375rem}
+.btn.block{width:100%}
+
+/* ---- Talk indicator ---- */
+#talk{display:inline-flex;align-items:center;gap:8px;font-size:.8125rem;color:var(--muted);padding:6px 12px;border-radius:999px;
+  background:var(--sunken);border:1px solid var(--line)}
+#talk:empty{display:none}
+#talk::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+#talk[data-state="speaking"]::before{background:var(--primary);animation:pulse 1s ease-in-out infinite}
+#talk[data-state="listening"]::before{background:var(--secondary)}
+#talk[data-state="paused"]::before{background:var(--warn)}
+@keyframes pulse{50%{transform:scale(1.7);opacity:.45}}
+
+/* ---- KPI cards ---- */
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.kpi{border-radius:var(--r-card);padding:20px;display:grid;gap:10px;transition:var(--ease)}
+.kpi:hover{transform:translateY(-2px)}
+.kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.kpi-icon{width:36px;height:36px;border-radius:10px;display:grid;place-items:center}
+.kpi-value{font-size:1.875rem;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.trend{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:.75rem;font-weight:600;white-space:nowrap}
+.trend .ic{width:14px;height:14px}
+.trend.up{background:var(--secondary-soft);color:var(--secondary-text)}
+.trend.down{background:var(--danger-soft);color:var(--danger-text)}
+.trend.flat{background:rgba(148,163,184,.14);color:var(--muted)}
+.spark{width:100%;height:40px;display:block}
+
+/* ---- Grid of cards ---- */
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;grid-auto-flow:dense}
+.span-2{grid-column:span 2}
+.span-3{grid-column:1 / -1}
+
+/* ---- Camera ---- */
+.stage{position:relative;border-radius:14px;overflow:hidden;background:#020617;aspect-ratio:16/10;border:1px solid var(--line)}
+video{width:100%;height:100%;object-fit:cover;display:block}
+.placeholder{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}
+.placeholder .ic{width:40px;height:40px;margin:0 auto 10px;color:var(--primary-text)}
+.stage.on .placeholder{display:none}
+.overlay{position:absolute;left:12px;right:12px;display:flex;gap:8px;pointer-events:none}
+.overlay.top{top:12px;justify-content:space-between}
+.overlay.bottom{bottom:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:.75rem;font-weight:600;
+  background:rgba(2,6,23,.6);color:#F8FAFC;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.12)}
+.pill:empty{display:none}
+#quality[data-state]::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--secondary)}
+#quality[data-state="bad"]::before{background:var(--warn)}
+#coach{flex:1;background:rgba(248,250,252,.95);color:#0F172A;border-radius:12px;padding:12px 14px;font-weight:600;
+  box-shadow:0 10px 30px rgba(2,6,23,.35);animation:rise .25s ease-out}
+#coach:empty{display:none}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.steps .btn{padding:9px 6px;font-size:.8125rem}
+.live-only{display:none!important}
+body.live .live-only{display:revert!important}
+body.live .steps.live-only{display:grid!important}
+body.live #start{display:none}
+body.done .live-only{display:none!important}
+
+/* ---- Conversation ---- */
+.chat{display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:220px;max-height:420px;padding-right:4px}
+.chat p{max-width:88%;padding:9px 12px;border-radius:14px;font-size:.875rem;line-height:1.45}
+.chat p.agent{background:var(--sunken);border:1px solid var(--line);border-bottom-left-radius:4px;align-self:flex-start}
+.chat p.you{background:var(--primary);color:#fff;border-bottom-right-radius:4px;align-self:flex-end}
+.chat p b{display:none}
+.chat:empty::before{content:"The agent's conversation appears here once the call starts.";color:var(--muted)}
+.say{display:none;gap:8px}
+body.live .say,body.done .say{display:flex}
+
+/* ---- Inputs ---- */
+input,select{font:inherit;font-size:.875rem;color:var(--text);background:var(--sunken);border:1px solid var(--line);
+  border-radius:var(--r-ctl);padding:10px 12px;width:100%;min-width:0;transition:var(--ease)}
+input::placeholder{color:var(--muted);opacity:.8}
+input:focus,select:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 2px var(--primary)}
+label{display:grid;gap:6px;font-size:.75rem;font-weight:500;color:var(--muted)}
+
+/* ---- Chart ---- */
+.seg{display:inline-flex;padding:3px;border-radius:var(--r-ctl);background:var(--sunken);border:1px solid var(--line)}
+.seg button{border:0;background:none;color:var(--muted);font:600 .75rem var(--font);padding:6px 12px;border-radius:9px;cursor:pointer;transition:var(--ease)}
+.seg button[aria-pressed="true"]{background:var(--primary);color:#fff}
+.seg button:active{transform:scale(.95)}
+/* Fixed height so the bars' percentage heights resolve; on wide screens it stretches to fill its card. */
+.chart{position:relative;height:240px;display:flex;align-items:flex-end;gap:10px;padding:8px 4px 28px;
+  background-image:repeating-linear-gradient(to top,var(--line) 0 1px,transparent 1px 25%);background-size:100% calc(100% - 28px);background-repeat:no-repeat}
+.bar{position:relative;flex:1;min-width:14px;max-width:64px;height:var(--h);border:0;padding:0;cursor:pointer;
+  border-radius:10px 10px 4px 4px;background:linear-gradient(to top,rgba(99,102,241,.55),var(--primary));transition:var(--ease)}
+.bar:hover,.bar:focus-visible{transform:translateY(-2px);filter:brightness(1.15)}
+.bar:active{transform:scale(.95)}
+.bar .x{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);font-size:.75rem;font-weight:500;color:var(--muted);white-space:nowrap}
+.bar .tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);white-space:nowrap;padding:6px 10px;border-radius:8px;
+  background:var(--surface-solid);border:1px solid var(--line);color:var(--text);font-size:.75rem;font-weight:600;opacity:0;pointer-events:none;transition:opacity .15s}
+.bar:hover .tip,.bar:focus-visible .tip{opacity:1}
+.chart-empty{margin:auto;color:var(--muted);text-align:center}
+
+/* ---- Tables ---- */
+.table-wrap{overflow:auto;border-radius:var(--r-ctl);border:1px solid var(--line);max-height:460px}
+table{width:100%;border-collapse:collapse;font-size:.875rem}
+th{position:sticky;top:0;background:var(--surface-solid);text-align:left;font-size:.75rem;font-weight:500;color:var(--muted);
+  padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr{transition:background .2s ease-in-out}
+tbody tr:hover{background:var(--primary-soft)}
+tbody tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.show-sm{display:none}
+.title{font-weight:600;color:var(--text)}
+.sub{font-size:.75rem;color:var(--muted)}
+.who{display:flex;align-items:center;gap:10px;font-weight:500;white-space:nowrap}
+.who .ic{width:28px;height:28px;padding:6px;border-radius:8px;background:var(--sunken);border:1px solid var(--line)}
+.who.agent .ic{color:var(--primary-text)} .who.you .ic{color:var(--secondary-text)}
+.status{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:.75rem;font-weight:600;white-space:nowrap}
+.status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.status.completed{background:var(--secondary-soft);color:var(--secondary-text)}
+.status.pending{background:var(--warn-soft);color:var(--warn-text)}
+.status.failed{background:var(--danger-soft);color:var(--danger-text)}
+.empty td{text-align:center;color:var(--muted);padding:28px}
+.list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.list li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-radius:var(--r-ctl);
+  background:var(--sunken);border:1px solid var(--line);transition:var(--ease)}
+.list li:hover{transform:translateY(-2px)}
+.list .empty-li{justify-content:center;color:var(--muted)}
+#warnings{color:var(--warn-text);font-weight:500}
+#warnings:empty{display:none}
+
+/* ---- Packets + corrections ---- */
+.packet-card{border-radius:var(--r-card);padding:18px;display:grid;gap:10px}
+.packet-card:empty{display:none}
+#packet{background:var(--secondary-soft);border:1px solid rgba(16,185,129,.35)}
+#customerPacket{background:var(--warn-soft);border:1px solid rgba(245,158,11,.35)}
+.packet-card .actions{display:flex;gap:8px;flex-wrap:wrap}
+.packet-card .actions a{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--r-ctl);font-weight:600;
+  text-decoration:none;color:var(--text);background:var(--sunken);border:1px solid var(--line);transition:var(--ease)}
+.packet-card .actions a:first-child{background:var(--primary);border-color:var(--primary);color:#fff}
+.packet-card .actions a:hover{transform:translateY(-2px)}
+.packet-card .actions a:active{transform:scale(.95)}
+.packet-card p{color:var(--muted)}
+.packet-card .sub{color:var(--muted)}
+.empty-state{display:grid;place-items:center;text-align:center;gap:8px;padding:28px 16px;border-radius:var(--r-ctl);
+  border:1px dashed var(--line);color:var(--muted)}
+.empty-state .ic{width:32px;height:32px;color:var(--primary-text)}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px;border:0;padding:0;margin:0}
+.form .full{grid-column:1 / -1}
+.lock{border:0;padding:0;margin:0;min-width:0;transition:opacity .2s}
+.lock:disabled{opacity:.5}
+.corr-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.corr-list:empty{display:none}
+.corr-list li{padding:10px 12px;border-radius:var(--r-ctl);background:var(--sunken);border:1px solid var(--line)}
+body.done #corrLocked{display:none}
+
+/* ---- Settings ---- */
+.settings{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px}
+.phone{display:flex;gap:16px;align-items:center;padding:16px;border-radius:var(--r-ctl);background:var(--sunken);border:1px solid var(--line)}
+.phone img{width:120px;height:120px;flex:none;background:#fff;border-radius:12px;padding:6px}
+#phoneUrl{font-weight:600;word-break:break-all}
+.kv{display:grid;gap:10px}
+.kv div{display:flex;justify-content:space-between;gap:12px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken);border:1px solid var(--line)}
+.kv b{font-weight:600;text-align:right}
+
+/* ---- Responsive ---- */
+@media (max-width:1180px){
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .span-2,.span-3,#corrections{grid-column:1 / -1}
+}
+@media (max-width:1023px){
+  .sidebar{transform:translateX(-100%)}
+  body.nav-open .sidebar{transform:none;box-shadow:0 0 60px rgba(2,6,23,.6)}
+  body.nav-open .scrim{opacity:1;pointer-events:auto}
+  .shell{margin-left:0}
+  .topbar{padding:10px 16px}
+  main{padding:20px 16px}
+  .pmeta{display:none}
+}
+@media (min-width:1024px){ #menuBtn{display:none} }
+@media (min-width:1181px){ .chart{height:auto;flex:1;min-height:240px} }
+@media (max-width:760px){
+  h1{font-size:1.5rem}
+  main{gap:16px}
+  .grid,.kpis,.settings{grid-template-columns:minmax(0,1fr);gap:16px}
+  .stage{aspect-ratio:1/1}
+  .steps{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .form{grid-template-columns:1fr}
+  /* On a phone the camera comes first while walking, then the figures, then everything else. */
+  .flow{display:flex;flex-direction:column;gap:16px}
+  .flow > .grid{display:contents}
+  .cam-card{order:1} .flow > .kpis{order:2} .grid > article:not(.cam-card){order:3}
+  /* Key figures become a swipeable row instead of three tall stacked cards. */
+  .flow > .kpis{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
+  .kpi{flex:0 0 78%;scroll-snap-align:start}
+  .kpi-value{font-size:1.5rem}
+  /* Tables: fewer columns, shelf shown under the title, icon-only "who". */
+  .hide-sm{display:none}
+  .show-sm{display:block}
+  td,th{padding:10px}
+  .who .name{display:none}
+  .search{max-width:none}
+  .phone{flex-direction:column;align-items:flex-start}
+  .card{padding:16px}
+}
+</style>
+</head>
+<body>
+<!-- Lucide icons (ISC licence), inlined once as a sprite: no icon library is loaded. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h16"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></symbol>
+</svg>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<aside class="sidebar glass" id="sidebar" aria-label="Main navigation">
+  <div class="brand">
+    <span class="logo"><svg class="ic"><use href="#i-book"/></svg></span>
+    <div><b>Library Claim</b><span class="cap">Contents claim agent</span></div>
+  </div>
+  <nav>
+    <a class="nav active" href="#sweep" aria-current="page"><svg class="ic"><use href="#i-camera"/></svg>Sweep</a>
+    <a class="nav" href="#inventory"><svg class="ic"><use href="#i-library"/></svg>Inventory</a>
+    <a class="nav" href="#packets"><svg class="ic"><use href="#i-file"/></svg>Packets</a>
+    <a class="nav" href="#corrections"><svg class="ic"><use href="#i-pencil"/></svg>Corrections</a>
+    <a class="nav" href="#settings"><svg class="ic"><use href="#i-settings"/></svg>Settings</a>
+  </nav>
+  <div class="side-foot">
+    <div class="row"><span class="live-dot" aria-hidden="true"></span><span id="sideState">Not connected</span></div>
+    <div class="cap" style="margin-top:4px">Valuation <span id="locale">IN · INR</span></div>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<div class="shell">
+  <header class="topbar glass">
+    <button class="icon-btn" id="menuBtn" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg class="ic"><use href="#i-menu"/></svg></button>
+    <label class="search" for="search"><svg class="ic"><use href="#i-search"/></svg>
+      <input id="search" type="search" placeholder="Search books and items…" autocomplete="off" aria-label="Search books and items"></label>
+    <div class="top-actions">
+      <div class="dd">
+        <button class="icon-btn" id="bellBtn" aria-label="Notifications" aria-expanded="false" aria-controls="bellPanel">
+          <svg class="ic"><use href="#i-bell"/></svg><span class="badge-count" id="bellCount" hidden>0</span></button>
+        <div class="panel glass" id="bellPanel" hidden>
+          <div class="panel-head">Notifications <span class="cap" id="noteHint">latest first</span></div>
+          <ul id="notes"><li class="cap">No alerts yet. Capture tips and packet updates show up here.</li></ul>
+        </div>
+      </div>
+      <div class="dd">
+        <button class="profile" id="profileBtn" aria-expanded="false" aria-controls="profilePanel">
+          <span class="avatar" aria-hidden="true">PH</span>
+          <span class="pmeta"><b>Policyholder</b><span class="cap" id="profileLocale">India · INR</span></span>
+          <svg class="ic"><use href="#i-chevron"/></svg></button>
+        <div class="panel glass" id="profilePanel" hidden>
+          <div class="row"><span class="cap">Valuation</span><b id="profileLocale2">IN · INR</b></div>
+          <div class="row"><span class="cap">Models</span><span id="models" class="cap" style="text-align:right"></span></div>
+          <a class="panel-link" href="#settings" data-close><svg class="ic"><use href="#i-phone"/></svg>Use phone camera</a>
+          <button class="panel-link" id="themeBtn" type="button"><svg class="ic"><use href="#i-sun"/></svg><span id="themeLabel">Light mode</span></button>
+          <button class="panel-link" id="newSweep" type="button"><svg class="ic"><use href="#i-refresh"/></svg>New sweep</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="page-head" id="sweep" aria-labelledby="h-sweep">
+      <div>
+        <h1 id="h-sweep">Library sweep</h1>
+        <p class="body" id="status" aria-live="polite" style="margin-top:6px">Checking setup…</p>
+      </div>
+      <div class="head-actions">
+        <span id="talk" aria-live="polite"></span>
+        <a class="btn" id="usePhone" href="#settings" hidden><svg class="ic"><use href="#i-phone"/></svg>Use phone</a>
+        <button id="start" class="btn primary lg" disabled><svg class="ic"><use href="#i-mic"/></svg>Start sweep</button>
+        <button id="end" class="btn danger live-only" disabled>End sweep</button>
+      </div>
+    </section>
+
+    <div class="alerts">
+      <div id="banner" class="alert bad" role="alert"></div>
+      <div id="error" class="alert bad" role="alert"></div>
+      <div id="warning" class="alert warn"></div>
+    </div>
+
+    <div class="flow">
+      <!-- KPIs -->
+      <section class="kpis" aria-label="Key figures">
+        <article class="kpi glass">
+          <div class="kpi-top"><span class="cap">Replacement value</span>
+            <span class="kpi-icon" style="background:var(--secondary-soft);color:var(--secondary-text)"><svg class="ic"><use href="#i-file"/></svg></span></div>
+          <div class="kpi-row"><span class="kpi-value" id="kValue">₹0</span>
+            <span class="trend flat" id="kTrend"><svg class="ic"><use href="#i-minus"/></svg><span id="kTrendText">no change yet</span></span></div>
+          <svg class="spark" id="kSpark" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <span class="cap">Live estimate from priced books · the packet is authoritative</span>
+        </article>
+        <article class="kpi glass">
+          <div class="kpi-top"><span class="cap">Books found</span>
+            <span class="kpi-icon" style="background:var(--primary-soft);color:var(--primary-text)"><svg class="ic"><use href="#i-library"/></svg></span></div>
+          <div class="kpi-row"><span class="kpi-value" id="cBooks">0</span>
+            <span class="trend down"><svg class="ic"><use href="#i-down"/></svg><span id="kUnid">0</span>&nbsp;unreadable</span></div>
+          <span class="cap"><span id="cIdent">0</span> identified from their spines</span>
+        </article>
+        <article class="kpi glass">
+          <div class="kpi-top"><span class="cap">Identification rate</span>
+            <span class="kpi-icon" style="background:rgba(148,163,184,.14);color:var(--muted)"><svg class="ic"><use href="#i-search"/></svg></span></div>
+          <div class="kpi-row"><span class="kpi-value" id="kRate">0%</span>
+            <span class="trend flat"><svg class="ic"><use href="#i-minus"/></svg><span id="cQueue">0</span>&nbsp;frames queued</span></div>
+          <span class="cap"><span id="cItems">0</span> other items · <span id="cWalls">0</span> walls measured</span>
+        </article>
+      </section>
+
+      <section class="grid" aria-label="Live capture">
+        <!-- Camera -->
+        <article class="card glass span-2 cam-card" aria-labelledby="h-cam">
+          <div class="card-head"><div><h2 id="h-cam">Camera</h2><p class="body">The agent directs each step; coaching appears on the video.</p></div></div>
+          <div class="stage" id="stage">
+            <video id="preview" autoplay playsinline muted></video>
+            <div class="placeholder"><div><svg class="ic"><use href="#i-camera"/></svg>Press <b>Start sweep</b> to turn on the camera and talk to the agent.</div></div>
+            <div class="overlay top"><span class="pill" id="segment"></span><span class="pill" id="quality"></span></div>
+            <div class="overlay bottom"><div id="coach" aria-live="polite"></div></div>
+          </div>
+          <div class="steps live-only" role="group" aria-label="Capture step">
+            <button class="btn" data-seg="wall" disabled>Wall</button>
+            <button class="btn" data-seg="shelf" disabled>Shelf</button>
+            <button class="btn" data-seg="unit" disabled title="Next bookcase">Unit</button>
+            <button class="btn" data-seg="front" disabled title="Books in front of the camera, no shelf">Front</button>
+            <button class="btn" data-seg="room" disabled>Room</button>
+            <button class="btn" id="wide" disabled title="Widest lens">Wide</button>
+          </div>
+        </article>
+
+        <!-- Conversation -->
+        <article class="card glass" aria-labelledby="h-chat">
+          <div class="card-head"><div><h2 id="h-chat">Conversation</h2><p class="body">Talk any time, even over the agent.</p></div></div>
+          <div class="chat" id="transcript" aria-live="polite"></div>
+          <form id="say" class="say"><input id="sayText" placeholder="Type to the agent…" autocomplete="off" aria-label="Message to the agent">
+            <button class="btn primary" type="submit" aria-label="Send"><svg class="ic"><use href="#i-send"/></svg></button></form>
+        </article>
+
+        <!-- Chart -->
+        <article class="card glass span-2" aria-labelledby="h-chart">
+          <div class="card-head">
+            <div><h2 id="h-chart">Value by shelf</h2><p class="body">Hover or focus a bar for details.</p></div>
+            <div class="seg" role="group" aria-label="Chart measure">
+              <button type="button" id="chartValue" aria-pressed="true">Value</button>
+              <button type="button" id="chartBooks" aria-pressed="false">Books</button>
+            </div>
+          </div>
+          <div class="chart" id="chart"><p class="chart-empty">Bars appear as shelves are read and priced.</p></div>
+        </article>
+
+        <!-- Other contents + walls -->
+        <article class="card glass" aria-labelledby="h-items">
+          <div class="card-head"><div><h2 id="h-items">Other contents</h2><p class="body">Furniture, lamps, art and more.</p></div></div>
+          <ul class="list" id="items"><li class="empty-li">Nothing yet.</li></ul>
+          <span class="cap">Walls</span>
+          <ul class="list" id="walls"><li class="empty-li">No wall measured yet.</li></ul>
+        </article>
+
+        <!-- Books -->
+        <article class="card glass span-3" id="inventory" aria-labelledby="h-books">
+          <div class="card-head"><div><h2 id="h-books">Books</h2><p class="body">Identified from the spine only. Unreadable spines are never guessed.</p></div>
+            <span id="warnings"></span></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Book</th><th class="hide-sm">Shelf</th><th>Status</th><th class="num hide-sm">Size (cm)</th><th class="num">Replacement</th></tr></thead>
+            <tbody id="books"><tr class="empty"><td colspan="5">Books appear here as the camera reads their spines.</td></tr></tbody>
+          </table></div>
+        </article>
+
+        <!-- Activity -->
+        <article class="card glass span-3" aria-labelledby="h-act">
+          <div class="card-head"><div><h2 id="h-act">Recent activity</h2><p class="body">What the agent, you and the system did, newest first.</p></div></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>User</th><th>Action</th><th>Status</th><th class="num">Time</th></tr></thead>
+            <tbody id="activity"><tr class="empty"><td colspan="4">Activity appears once the sweep starts.</td></tr></tbody>
+          </table></div>
+        </article>
+
+        <!-- Packets -->
+        <article class="card glass span-2" id="packets" aria-labelledby="h-packets">
+          <div class="card-head"><div><h2 id="h-packets">Claim packets</h2><p class="body">Verified packet from the sweep, plus your customer-advised version if you give corrections.</p></div></div>
+          <div class="empty-state" id="packetEmpty"><svg class="ic"><use href="#i-file"/></svg>The claim packet appears here a few minutes after you end the sweep.</div>
+          <div class="packet-card" id="packet"></div>
+          <div class="packet-card" id="customerPacket"></div>
+          <p class="cap" id="usage"></p>
+        </article>
+
+        <!-- Corrections -->
+        <article class="card glass" id="corrections" aria-labelledby="h-corr">
+          <div class="card-head"><div><h2 id="h-corr">Your corrections</h2>
+            <p class="body">Know a title or price? Your details go into a separate customer-advised packet, labelled as stated by you.</p></div></div>
+          <p class="cap" id="corrLocked">Available once the claim packet is ready. You can also just tell the agent.</p>
+          <fieldset class="lock" id="corrFieldset" disabled>
+            <form id="corrForm" class="form">
+              <label class="full">Book or item<select id="cTarget" required></select></label>
+              <label>Title<input id="cTitle" placeholder="as on the book"></label>
+              <label>Author<input id="cAuthor"></label>
+              <label>New price<input id="cNew" inputmode="decimal" placeholder="e.g. 450"></label>
+              <label>Used value<input id="cUsed" inputmode="decimal"></label>
+              <label class="full">Your comment<input id="cComment" required placeholder="e.g. I bought it last year at this price"></label>
+              <button type="submit" class="btn full">Add correction</button>
+            </form>
+          </fieldset>
+          <div id="corrMsg" class="alert warn"></div>
+          <ul id="corrList" class="corr-list"></ul>
+          <button id="buildCustomer" class="btn secondary block" disabled>Create customer-advised packet</button>
+        </article>
+
+        <!-- Settings -->
+        <article class="card glass span-3" id="settings" aria-labelledby="h-set">
+          <div class="card-head"><div><h2 id="h-set">Settings</h2><p class="body">Phone camera, valuation and models for this session.</p></div></div>
+          <div class="settings">
+            <div class="phone" id="phone" hidden>
+              <img id="phoneQr" alt="QR code with the phone address">
+              <div style="display:grid;gap:6px">
+                <b>Use your phone camera</b>
+                <span class="body">Same Wi-Fi as this computer. Scan the code, or open:</span>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a id="phoneUrl" href="#"></a>
+                  <button class="btn" id="copyUrl" type="button">Copy</button></div>
+                <span class="cap">If the phone says "not private", tap Advanced → Proceed.</span>
+              </div>
+            </div>
+            <div class="kv">
+              <div><span class="cap">Valuation country / currency</span><b id="setLocale">IN · INR</b></div>
+              <div><span class="cap">Voice and vision models</span><b id="setModels">—</b></div>
+              <div><span class="cap">Change defaults</span><b class="cap">COUNTRY / CURRENCY in .env</b></div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </div>
+  </main>
+</div>
+<script src="/bargein.js"></script>
+<script src="/ui.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# Batch files must keep Windows line endings (CRLF) or cmd.exe mis-handles labels/goto;
+# shell scripts must keep Unix line endings (LF) to run on macOS/Linux.
+*.bat text eol=crlf
+*.sh  text eol=lf
+* text=auto

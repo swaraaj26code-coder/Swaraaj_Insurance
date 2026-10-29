@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+data/cache/
+data/sweeps/
+data/*.pem
+# The submitted sweep is copied to submission/ explicitly.
+data/ca-bundle.pem
+data/app.log
+data/models.json
