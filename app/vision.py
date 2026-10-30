@@ -101,6 +101,16 @@ def client() -> genai.Client:
     return _client
 
 
+async def close_client():
+    """Close the shared client's connections while their loop is still running. Left to the
+    garbage collector, the client's __del__ schedules aclose() on whatever loop is running
+    then, and sockets from the doctor's (closed) loop log "Event loop is closed"."""
+    global _client, _client_loop
+    if _client is not None:
+        old, _client, _client_loop = _client, None, None
+        await old.aio.aclose()
+
+
 async def analyse(jpeg: bytes, kind: str) -> dict:
     """kind: 'shelf' | 'front' | 'wall' | 'room'. Returns parsed JSON plus timing/usage."""
     task = TASKS.get(kind, ROOM_TASK)

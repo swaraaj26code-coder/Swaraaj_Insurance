@@ -143,12 +143,18 @@ async def pick_pricing(cands: list[str], vision_model: str | None) -> str | None
 async def pick_live(cands: list[str]) -> str | None:
     from google import genai
 
-    from . import config, live
+    from . import config
     client = genai.Client(api_key=config.GOOGLE_API_KEY)
+    async with client.aio as aclient:  # closed on this loop, before asyncio.run() ends it
+        return await _first_live(aclient, cands)
+
+
+async def _first_live(aclient, cands: list[str]) -> str | None:
+    from . import live
     for name in cands[:5]:
         try:
             async def attempt():
-                async with client.aio.live.connect(model=name, config=live.connect_config()) as session:
+                async with aclient.live.connect(model=name, config=live.connect_config()) as session:
                     await session.send_realtime_input(text="Say the single word: ready.")
                     async for resp in session.receive():
                         c = resp.server_content
@@ -238,10 +244,14 @@ async def main(skip_models: bool = False) -> bool:
         return finish(True)
     cands = model_candidates(models)
     print("\nTrying models (this takes about a minute)...")
-    vision_model = await pick_vision(cands["text"])
-    if not vision_model:
-        say(FAIL, "No vision model works with this key", "Your key may have no free quota left today. Wait, or try another Google account's key.")
-    pricing_model = await pick_pricing(cands["text"], vision_model)
+    from . import vision
+    try:
+        vision_model = await pick_vision(cands["text"])
+        if not vision_model:
+            say(FAIL, "No vision model works with this key", "Your key may have no free quota left today. Wait, or try another Google account's key.")
+        pricing_model = await pick_pricing(cands["text"], vision_model)
+    finally:
+        await vision.close_client()  # this loop ends with asyncio.run(); the server makes its own client
     live_model = await pick_live(cands["live"])
     if not live_model:
         say(FAIL, "No live voice model works with this key", "The voice agent cannot start. Check https://aistudio.google.com/ for Live API access.")

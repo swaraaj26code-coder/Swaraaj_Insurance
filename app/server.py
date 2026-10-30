@@ -43,6 +43,14 @@ async def start_key_check():
     app.state.key_task = asyncio.create_task(check_key())
 
 
+@app.on_event("shutdown")
+async def close_vision_client():
+    # Close while the loop still runs; otherwise the client's __del__ logs "Event loop is closed".
+    from .vision import close_client
+    with contextlib.suppress(Exception):
+        await close_client()
+
+
 async def check_key():
     if not config.has_key():
         KEY_STATUS.update(state="missing", detail="No Google API key in the .env file.")
@@ -361,6 +369,8 @@ async def live_ws(websocket: WebSocket, sweep_id: str):
             s["live"] = None
             with contextlib.suppress(Exception):
                 await connection.__aexit__(None, None, None)
+            with contextlib.suppress(Exception):
+                await client.aio.aclose()
     except WebSocketDisconnect:
         pass
     except Exception as exc:
