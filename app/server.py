@@ -125,6 +125,11 @@ def ui_js():
     return FileResponse(WEB / "ui.js", media_type="text/javascript")
 
 
+@app.get("/avatar.js")
+def avatar_js():
+    return FileResponse(WEB / "avatar.js", media_type="text/javascript")
+
+
 @app.get("/favicon.ico")
 def favicon():
     return Response(status_code=204)

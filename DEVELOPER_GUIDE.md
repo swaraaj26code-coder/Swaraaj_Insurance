@@ -112,6 +112,7 @@ library-claim-agent/
 │   ├── index.html             layout + all CSS (design tokens, glass cards) + Lucide icon sprite
 │   ├── app.js                 the call: camera, mic, agent audio, barge-in wiring, server events
 │   ├── ui.js                  dashboard: nav, menus, notifications, activity, KPIs, chart, search
+│   ├── avatar.js              the agent's 3D face, lip-synced to its voice (TalkingHead + HeadAudio)
 │   └── bargein.js             barge-in gate logic (pure, Node-testable)
 │
 ├── eval/
@@ -241,7 +242,7 @@ Tuning constants that are not in `.env` but in `config.py`: `BLUR_MIN` 60, `GLAR
 | Method and path | Handler | Purpose |
 |---|---|---|
 | `GET /` | `index` | `web/index.html` |
-| `GET /app.js`, `/ui.js`, `/bargein.js` | `js`, `ui_js`, `bargein_js` | front-end scripts |
+| `GET /app.js`, `/ui.js`, `/bargein.js`, `/avatar.js` | `js`, `ui_js`, `bargein_js`, `avatar_js` | front-end scripts |
 | `GET /favicon.ico` | `favicon` | 204 (no icon) |
 | `GET /api/health` | `health` | key state, models, locale, `phone_url` |
 | `GET /api/phone-qr.svg` | `phone_qr` | QR code of `PHONE_URL` |
@@ -555,7 +556,7 @@ Why not `truststore.inject_into_ssl()`: it replaces `ssl.SSLContext` process-wid
 | `_add_correction`, `_build_customer`, `add_correction`, `customer_packet` | Customer-advised flow (shared by the tools and the page). |
 | `_run_tool(s, fc)` | Tool dispatcher (section 7.3), including the locale guard and the missed-shelf check. |
 | `live_ws(ws, id)` | Connects Gemini Live and runs `upstream()` (page → model) and `downstream()` (model → page). Tool calls run as tasks. Audio arriving with an interruption is dropped. Errors are explained. |
-| `health`, `phone_qr`, `get_packet`, `index`, `js`, `ui_js`, `bargein_js`, `favicon` | Small GET handlers. |
+| `health`, `phone_qr`, `get_packet`, `index`, `js`, `ui_js`, `bargein_js`, `avatar_js`, `favicon` | Small GET handlers. |
 
 ### `app/doctor.py`: setup checks and model selection
 
@@ -603,7 +604,7 @@ Why not `truststore.inject_into_ssl()`: it replaces `ssl.SSLContext` process-wid
 
 ## 9. Module reference: front end (`web/`)
 
-Plain HTML, CSS and JS with no framework, no bundler and no external JS. `index.html` loads `bargein.js`, then `ui.js`, then `app.js`.
+Plain HTML, CSS and JS with no framework and no bundler. `index.html` loads `bargein.js`, then `ui.js`, then `app.js`, then the module `avatar.js`. The only external JS is the avatar's (three.js, TalkingHead, HeadAudio from jsDelivr, pinned in the import map and in `avatar.js`); the app works without it.
 
 ### `web/index.html`: layout and design system
 
@@ -629,7 +630,7 @@ Plain HTML, CSS and JS with no framework, no bundler and no external JS. `index.
 | Function | What it does |
 |---|---|
 | `checkSetup()` | Reads `/api/health`: key state (banner if missing or invalid), models, locale, phone link. Enables Start. |
-| `start()` | Camera and mic permissions, `POST /api/sweeps`, two AudioContexts (mic, and 24 kHz playback with a `GainNode` for ducking), then the WebSocket. The mic `ScriptProcessor` (2048 samples, ~43 ms) feeds `barge.update`. While the gate is shut it sends silence and keeps a 10-chunk pre-roll. |
+| `start()` | Camera and mic permissions, `POST /api/sweeps`, two AudioContexts (mic, and playback with a `GainNode` for ducking), then the WebSocket. Playback uses the avatar's context and feeds its input when `AgentAvatar.ready` resolves within 4 s; otherwise a 24 kHz context straight to the speakers. The mic `ScriptProcessor` (2048 samples, ~43 ms) feeds `barge.update`. While the gate is shut it sends silence and keeps a 10-chunk pre-roll. |
 | `onReady(model)` | Starts the frame timers (`sendHires` every 500 ms, `sendLive` every 1 s) and sets `body.live`. |
 | `grab`, `sendHires`, `sendLive`, `widest` | Canvas capture (1280 px to the pipeline, 640 px to the agent) and zoom-out on phones. |
 | `segment(kind)` | Manual step buttons → `POST /segment`. |
@@ -658,6 +659,18 @@ Plain HTML, CSS and JS with no framework, no bundler and no external JS. `index.
 | `startClock()` | Sweep clock for activity times. |
 
 ### `web/bargein.js`: barge-in gate (pure logic)
+
+### `web/avatar.js`: the agent's face (module)
+
+A 3D avatar ([TalkingHead](https://github.com/met4citizen/TalkingHead) 1.7.0 on three.js 0.180.0) with lips driven by [HeadAudio](https://github.com/met4citizen/HeadAudio), which detects mouth shapes from the sound itself. That is what lets it follow the live model's audio stream, which comes with no text timings. Everything runs in the browser; nothing is sent anywhere.
+
+| Member | What it does |
+|---|---|
+| `window.AgentAvatar.ready` | Resolves to `{ctx, input}` (the avatar's AudioContext and the node to play the agent's voice into) or `null` if the avatar could not load (no WebGL, CDN not reachable); the face is then hidden. |
+| `load()` | Builds the head, loads the GLB, registers the HeadAudio worklet and model, connects speech → HeadAudio, and delays the voice by `LIPSYNC_DELAY_S` (80 ms) to match HeadAudio's lag. On each new reply the avatar looks at the camera and, on the computer, gestures. |
+| `place()` | Computer: top of the Conversation card (`#faceSlot`, `upper` view). Below 760 px: a bubble on the camera (`#stage.has-face`, `head` view). Re-run on width changes. `FRAMING` holds the camera offsets for each view. |
+
+The avatar is TalkingHead's Ready Player Me sample (`brunette.glb`), licensed CC BY-NC 4.0: **non-commercial use only**. For production, set `AVATAR_URL` to your own GLB with a Mixamo-compatible rig plus ARKit and Oculus viseme blend shapes.
 
 | Member | What it does |
 |---|---|

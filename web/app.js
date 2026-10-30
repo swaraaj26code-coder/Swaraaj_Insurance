@@ -120,9 +120,14 @@ async function start() {
     body: JSON.stringify({ device: navigator.userAgent.slice(0, 120) }) });
   sweepId = (await r.json()).id;
   audioCtx = new AudioContext();               // microphone
-  playCtx = new AudioContext({ sampleRate: 24000 }); // agent voice (24 kHz from the model)
+  // Agent voice (24 kHz from the model): through the avatar's audio graph so its lips follow it
+  // (avatar.js), or straight out if the avatar is not up within a few seconds.
+  const face = await Promise.race([window.AgentAvatar?.ready, new Promise((r) => setTimeout(r, 4000))]);
+  playCtx = face?.ctx || new AudioContext({ sampleRate: 24000 });
+  playGain?.disconnect();
   playGain = playCtx.createGain();                   // volume ducking for barge-in
-  playGain.connect(playCtx.destination);
+  playGain.connect(face?.input || playCtx.destination);
+  nextPlay = 0;                                      // times from a previous call's context do not apply
   await audioCtx.resume(); await playCtx.resume();
   ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/${sweepId}`);
   ws.onmessage = (e) => handle(JSON.parse(e.data));

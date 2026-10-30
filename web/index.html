@@ -9,6 +9,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Agent avatar (avatar.js): versions pinned to the pair HeadAudio's realtime example uses. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js/+esm",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+  "talkinghead": "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@1.7.0/modules/talkinghead.mjs"
+} }
+</script>
 <style>
 /* =========================================================================
    Design system: "Glassmorphism Minimalist"
@@ -203,6 +211,21 @@ body.live .live-only{display:revert!important}
 body.live .steps.live-only{display:grid!important}
 body.live #start{display:none}
 body.done .live-only{display:none!important}
+
+/* ---- Agent face (avatar.js): in the Conversation card, or a bubble on the camera on a phone ---- */
+.face-slot{border-radius:14px;overflow:hidden;border:1px solid var(--line);
+  background:radial-gradient(120% 90% at 50% 15%,var(--primary-soft),transparent 70%),var(--sunken)}
+.face-slot:empty{display:none}
+.face{position:relative;width:100%;aspect-ratio:4/3;transition:box-shadow .2s ease-in-out}
+.face[hidden]{display:none}
+.face-msg{position:absolute;inset:0;display:grid;place-items:center;font-size:.75rem;color:var(--muted)}
+.face[data-state="ready"] .face-msg{display:none}
+.stage > .face{position:absolute;right:12px;bottom:12px;width:30%;max-width:132px;aspect-ratio:3/4;border-radius:14px;overflow:hidden;
+  background:radial-gradient(120% 90% at 50% 15%,rgba(99,102,241,.3),transparent 70%),rgba(2,6,23,.6);
+  border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 30px rgba(2,6,23,.35)}
+.stage > .face[data-talking]{box-shadow:0 0 0 2px var(--primary),0 10px 30px rgba(2,6,23,.35)}
+.stage.has-face .overlay.bottom{right:calc(min(30%,132px) + 24px)}
+.stage.has-face .placeholder{padding-bottom:calc(min(30%,132px) * 4 / 3 + 24px)}
 
 /* ---- Conversation ---- */
 .chat{display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:220px;max-height:420px;padding-right:4px}
@@ -492,6 +515,7 @@ body.done #corrLocked{display:none}
         <!-- Conversation -->
         <article class="card glass" aria-labelledby="h-chat">
           <div class="card-head"><div><h2 id="h-chat">Conversation</h2><p class="body">Talk any time, even over the agent.</p></div></div>
+          <div class="face-slot" id="faceSlot"><div class="face" id="agentFace" role="img" aria-label="The agent"><span class="face-msg">Loading the agent…</span></div></div>
           <div class="chat" id="transcript" aria-live="polite"></div>
           <form id="say" class="say"><input id="sayText" placeholder="Type to the agent…" autocomplete="off" aria-label="Message to the agent">
             <button class="btn primary" type="submit" aria-label="Send"><svg class="ic"><use href="#i-send"/></svg></button></form>
@@ -584,6 +608,7 @@ body.done #corrLocked{display:none}
               <div><span class="cap">Valuation country / currency</span><b id="setLocale">IN · INR</b></div>
               <div><span class="cap">Voice and vision models</span><b id="setModels">—</b></div>
               <div><span class="cap">Change defaults</span><b class="cap">COUNTRY / CURRENCY in .env</b></div>
+              <div><span class="cap">Agent avatar</span><b class="cap">Ready Player Me sample via TalkingHead · CC BY-NC 4.0, non-commercial</b></div>
             </div>
           </div>
         </article>
@@ -594,5 +619,6 @@ body.done #corrLocked{display:none}
 <script src="/bargein.js"></script>
 <script src="/ui.js"></script>
 <script src="/app.js"></script>
+<script type="module" src="/avatar.js"></script>
 </body>
 </html>
