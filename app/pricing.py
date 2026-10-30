@@ -21,7 +21,7 @@ import httpx
 from google.genai import types
 
 from . import cache, config, shops
-from .ratelimit import RateLimiter
+from .ratelimit import RateLimiter, map_threads
 from .vision import client
 
 log = logging.getLogger(__name__)
@@ -270,9 +270,8 @@ def _book_from_shops(book: dict, country: str, currency: str) -> dict:
 async def price_books(books: list[dict], country: str, currency: str) -> dict[int, dict]:
     """books: [{title, author, isbn}] -> {index: {replacement_cost, used_value, review}}."""
     started = time.monotonic()
-    results = {}
-    for i, b in enumerate(books):
-        results[i] = await asyncio.to_thread(_book_from_shops, b, country, currency)
+    found = await map_threads(_book_from_shops, [(b, country, currency) for b in books], config.LOOKUP_CONCURRENCY)
+    results = dict(enumerate(found))
     stats["shop_lookups_s"] = stats.get("shop_lookups_s", 0.0) + time.monotonic() - started
     missing = [i for i, e in results.items() if not e["replacement_cost"] or not e["used_value"]]
     if missing and config.PRICING_SEARCH:
@@ -286,24 +285,27 @@ async def price_books(books: list[dict], country: str, currency: str) -> dict[in
     return results
 
 
+def _item_from_ikea(it: dict, country: str, currency: str) -> dict:
+    entry = {"review": [], "exact": False}
+    query = it.get("search_term") or it["description"]
+    rng = shops.ikea_range(query, country)
+    if rng:
+        low, why_low = _convert(rng["low"], currency)
+        high, why_high = _convert(rng["high"], currency)
+        if low and high:
+            entry.update(low=low, high=high, comparables=rng["comparables"])
+        else:
+            entry["review"].append(why_low or why_high)
+    else:
+        entry["review"].append(f'no comparable product for "{query}" at IKEA {country}')
+    return entry
+
+
 async def price_items(items: list[dict], country: str, currency: str) -> dict[int, dict]:
     """items: [{category, description, brand_model, search_term}] -> {index: {low, high, exact, review}}.
     IKEA comparables give a sourced range; an exact brand/model price needs web search."""
-    results = {}
-    for i, it in enumerate(items):
-        entry = {"review": [], "exact": False}
-        query = it.get("search_term") or it["description"]
-        rng = await asyncio.to_thread(shops.ikea_range, query, country)
-        if rng:
-            low, why_low = _convert(rng["low"], currency)
-            high, why_high = _convert(rng["high"], currency)
-            if low and high:
-                entry.update(low=low, high=high, comparables=rng["comparables"])
-            else:
-                entry["review"].append(why_low or why_high)
-        else:
-            entry["review"].append(f'no comparable product for "{query}" at IKEA {country}')
-        results[i] = entry
+    found = await map_threads(_item_from_ikea, [(it, country, currency) for it in items], config.LOOKUP_CONCURRENCY)
+    results = dict(enumerate(found))
     exact_wanted = [i for i, it in enumerate(items) if it.get("brand_model")]
     if exact_wanted and config.PRICING_SEARCH:
         grounded = await _grounded_items([items[i] for i in exact_wanted], country, currency)

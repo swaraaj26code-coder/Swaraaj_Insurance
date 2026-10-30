@@ -22,6 +22,17 @@ class SyncRateLimiter:
             time.sleep(delay)
 
 
+async def map_threads(fn, args: list[tuple], limit: int) -> list:
+    """fn(*a) for each a in worker threads, at most `limit` at a time; results in input order.
+    For blocking HTTP lookups that used to run one after another (FAILURES #16)."""
+    sem = asyncio.Semaphore(max(limit, 1))
+
+    async def one(a):
+        async with sem:
+            return await asyncio.to_thread(fn, *a)
+    return await asyncio.gather(*(one(a) for a in args))
+
+
 class RateLimiter:
     def __init__(self, per_minute: int):
         self.interval = 60.0 / max(per_minute, 1)

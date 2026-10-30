@@ -374,3 +374,91 @@ def test_plain_wall_is_not_rejected_as_blurry(tmp_path, monkeypatch):
     keyframe, front_q = asyncio.run(run())
     assert keyframe is True
     assert "blurry" in front_q["problems"]
+
+
+def test_packet_does_not_wait_for_a_stalled_vision_service(tmp_path, monkeypatch):
+    """Regression (FAILURES #16): frames stuck in vision (time-outs, 503s) held the packet for
+    minutes. They are now left out after FINISH_STALL_S without progress, and listed for review."""
+    import asyncio
+    import time as _time
+
+    from app import sweep as sweep_mod
+    monkeypatch.setattr(sweep_mod.config, "SWEEPS_DIR", tmp_path)
+    monkeypatch.setattr(sweep_mod.config, "FINISH_STALL_S", 0.5)
+
+    async def hangs(jpeg, kind):
+        await asyncio.Event().wait()
+    monkeypatch.setattr(sweep_mod.vision, "analyse", hangs)
+
+    async def run():
+        async def quiet(_):
+            pass
+        s = sweep_mod.Sweep(quiet)
+        s.start_segment("front", "")
+        for idx in range(5):
+            await s.queue.put(({"idx": idx}, s.segment, None, b"", None))
+        started = _time.monotonic()
+        p = await s.finish()
+        return p, _time.monotonic() - started
+
+    p, took = asyncio.run(run())
+    assert took < 5
+    assert p["metrics"]["frames_not_analysed"] == 5
+    assert any("5 captured frame(s) were not analysed" in r["reason"] for r in p["review_queue"])
+
+
+def test_end_sweep_and_end_button_build_the_packet_once(tmp_path, monkeypatch):
+    """Regression (FAILURES #16): the agent's end_sweep and the End button both called finish();
+    the second ran the whole build again."""
+    import asyncio
+
+    from app import sweep as sweep_mod
+    monkeypatch.setattr(sweep_mod.config, "SWEEPS_DIR", tmp_path)
+    builds = []
+    real_build = sweep_mod.packet.build
+    monkeypatch.setattr(sweep_mod.packet, "build", lambda *a: builds.append(1) or real_build(*a))
+
+    async def slow_pricing(items, country, currency):  # real pricing takes seconds; the calls overlap
+        await asyncio.sleep(0.05)
+        return {}
+    monkeypatch.setattr(sweep_mod.pricing, "price_items", slow_pricing)
+
+    async def run():
+        async def quiet(_):
+            pass
+        s = sweep_mod.Sweep(quiet)
+        s.start_segment("front", "")
+        return await asyncio.gather(s.finish(), s.finish())
+
+    first, second = asyncio.run(run())
+    assert first is second
+    assert len(builds) == 1
+
+
+def test_daily_vision_quota_is_not_retried_and_later_frames_skip_the_call(tmp_path, monkeypatch):
+    """Regression (FAILURES #16): a per-day 429 was retried like a per-minute one, and every later
+    frame repeated the same failing calls."""
+    import asyncio
+
+    from app import vision
+    from app.ratelimit import RateLimiter
+    monkeypatch.setattr(vision.config, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(vision, "_limiter", RateLimiter(10**6))
+    monkeypatch.setattr(vision, "_quota_until", 0.0)
+    calls = []
+
+    async def generate_content(**kw):
+        calls.append(1)
+        raise RuntimeError("429 RESOURCE_EXHAUSTED. {'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', "
+                           "'retryDelay': '64161s'}")
+    fake = types.SimpleNamespace(aio=types.SimpleNamespace(models=types.SimpleNamespace(generate_content=generate_content)))
+    monkeypatch.setattr(vision, "client", lambda: fake)
+
+    async def run():
+        with pytest.raises(RuntimeError, match="PerDay"):
+            await vision.analyse(b"frame-1", "shelf")
+        with pytest.raises(vision.QuotaExhausted):
+            await vision.analyse(b"frame-2", "shelf")
+
+    asyncio.run(run())
+    assert len(calls) == 1

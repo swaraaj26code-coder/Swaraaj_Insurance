@@ -181,6 +181,8 @@ All settings live in `.env` (template: `.env.example`) and are read once by `app
 | `SECOND_COUNTRY`, `SECOND_CURRENCY` | `US`, `USD` | sweep.finish | 10-book locale comparison |
 | `APPRAISAL_THRESHOLD` | `5000` | packet | above this a book goes to human appraisal |
 | `VISION_RPM`, `PRICING_RPM`, `PRICING_BATCH` | 10, 10, 5 | ratelimit, pricing | free-tier pacing |
+| `LOOKUP_CONCURRENCY` | 4 | identify, pricing | catalogue and shop lookups at a time |
+| `FINISH_STALL_S`, `FINISH_VISION_WAIT_S` | 60, 180 | sweep | how long the packet waits for queued frames (no progress / in all) |
 | `USE_OS_TRUST`, `FORCE_IPV4` | 1, 1 | net | office-proxy and IPv6 fixes |
 | `COST_IN_PER_M`, `COST_OUT_PER_M`, `COST_PER_GROUNDED_CALL`, `COST_LIVE_PER_MIN` | 0 | packet metrics | optional USD prices for a cost estimate |
 
@@ -211,14 +213,14 @@ Tuning constants that are not in `.env` but in `config.py`: `BLUR_MIN` 60, `GLAR
    - wall → size, shelving units and shelf counts.
 5. **Inventory.** `Sweep.publish_inventory` runs:
    - `books()`: `merge.cluster`, then positions, then `_measure`;
-   - `identify_new()`: catalogue lookup in a thread;
+   - `identify_new()`: catalogue lookups in threads, `LOOKUP_CONCURRENCY` at a time;
    - then broadcasts an `inventory` event to the page and (throttled) an `[INVENTORY]` note to the agent.
 6. **Coaching.** `Sweep.coach` sends tips: blur, glare, dark, lost tracking, unreadable spines, missing A4 sheet, view blocked, wall not fully visible, and art (original or print?). They go to the page and to the agent as `[CAPTURE MONITOR] …`.
 7. **Agent tools.** The agent calls tools (`set_locale`, `start_shelf`, …), handled by `server._run_tool`.
 8. **End.** The agent's `end_sweep` (or the page's End button, `POST /finish`) runs `server._finish`, then `Sweep.finish()`:
-   - drain the vision queue;
+   - drain the vision queue while vision makes progress (stops after `FINISH_STALL_S` without a result or `FINISH_VISION_WAIT_S` in all; frames left over go to the review queue);
    - identify;
-   - price books and items, plus the second-locale sample;
+   - price books and items, plus the second-locale sample, side by side;
    - `room.compute`, then `packet.build`;
    - write the JSON and the report.
 
@@ -520,10 +522,10 @@ Why not `truststore.inject_into_ssl()`: it replaces `ssl.SSLContext` process-wid
 | `_add_item(frame, it, img, corners, Hcm)` | De-duplicates items (same category, description ≥ 75). Approximate size at the sheet's depth. Art triggers the "original or print?" question. |
 | `books()` | `merge.cluster` → positions → book dicts with identification → `_measure`; warnings include `_duplicate_segments` (two segments sharing 3+ spine readings = possible double count). |
 | `_measure(books)` | Spine cm from, in order: the sheet in the same frame, the sheet elsewhere on that shelf, catalogue heights of identified books, then the 19.8 cm prior (flagged). |
-| `identify_new(books)` | Identifies new readings in a thread and caches by reading key. |
+| `identify_new(books)` | Identifies new readings in threads (`LOOKUP_CONCURRENCY` at a time) and caches by reading key. |
 | `publish_inventory()` | Identify, then the `inventory` event. |
 | `_pricing_loop()` / `price_pending(minimum)` | Prices identified books in the background, in batches. |
-| `finish()` | Drain, identify, price books and items, second-locale sample, room, `packet.build`, write the JSON and report, time to packet. Idempotent. |
+| `finish(vision_wait_s)` | Drain (`_drain_vision`: waits only while vision makes progress, returns the frames left unanalysed), identify, then price books, items and the second-locale sample side by side, room, `packet.build`, write the JSON and report, time to packet. Runs once: a second caller awaits the first. |
 | `add_correction(...)` | Validates the target against the packet, parses amounts ("₹1,250" → 1250) and records the correction. |
 | `build_customer_packet()` | Builds and writes the customer-advised JSON and report, with a version number. |
 | `_log_event(e)` | Appends to `events.jsonl`. |
@@ -658,8 +660,6 @@ Plain HTML, CSS and JS with no framework and no bundler. `index.html` loads `bar
 | `setNav`, `toggle`, `setTheme`, `init` | Drawer, dropdown panels (Esc and outside-click close), theme (`localStorage` with try/catch), scroll-spy (`IntersectionObserver` highlights the current section). |
 | `startClock()` | Sweep clock for activity times. |
 
-### `web/bargein.js`: barge-in gate (pure logic)
-
 ### `web/avatar.js`: the agent's face (module)
 
 A 3D avatar ([TalkingHead](https://github.com/met4citizen/TalkingHead) 1.7.0 on three.js 0.180.0) with lips driven by [HeadAudio](https://github.com/met4citizen/HeadAudio), which detects mouth shapes from the sound itself. That is what lets it follow the live model's audio stream, which comes with no text timings. Everything runs in the browser; nothing is sent anywhere.
@@ -671,6 +671,8 @@ A 3D avatar ([TalkingHead](https://github.com/met4citizen/TalkingHead) 1.7.0 on 
 | `place()` | Computer: top of the Conversation card (`#faceSlot`, `upper` view). Below 760 px: a bubble on the camera (`#stage.has-face`, `head` view). Re-run on width changes. `FRAMING` holds the camera offsets for each view. |
 
 The avatar is TalkingHead's Ready Player Me sample (`brunette.glb`), licensed CC BY-NC 4.0: **non-commercial use only**. For production, set `AVATAR_URL` to your own GLB with a Mixamo-compatible rig plus ARKit and Oculus viseme blend shapes.
+
+### `web/bargein.js`: barge-in gate (pure logic)
 
 | Member | What it does |
 |---|---|
@@ -718,7 +720,7 @@ Contains every field required by the assignment's contract, plus these additions
 - **`totals`:** `books_needs_appraisal`, `excluded_by_policyholder`, `currency`.
 - **Top level:**
   - `excluded`, `policyholder_statements`, `locale_comparison{note, books[]}`;
-  - `metrics{latency_s, vision, pricing, barge_ins, estimated_cost_usd, cost_note, time_to_packet_s}`;
+  - `metrics{latency_s, vision, pricing, barge_ins, estimated_cost_usd, cost_note, time_to_packet_s, frames_not_analysed}`;
   - `method{…}`, `packet_type` (`verified` or `customer_advised`), `title`;
   - customer packet only: `based_on{packet, sweep_id, verified_totals}`, `customer_corrections[]`, `customer_version`.
 

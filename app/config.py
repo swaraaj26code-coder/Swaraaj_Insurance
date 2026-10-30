@@ -65,6 +65,14 @@ APPRAISAL_THRESHOLD = float(os.getenv("APPRAISAL_THRESHOLD", "5000"))
 VISION_RPM = int(os.getenv("VISION_RPM", "10"))
 PRICING_RPM = int(os.getenv("PRICING_RPM", "10"))
 PRICING_BATCH = int(os.getenv("PRICING_BATCH", "5"))
+# Catalogue and shop lookups (plain HTTP) run this many at a time instead of one by one.
+LOOKUP_CONCURRENCY = int(os.getenv("LOOKUP_CONCURRENCY", "4"))
+
+# After "end sweep", frames still queued for vision are waited for only while vision makes
+# progress: stop after FINISH_STALL_S without a result, and after FINISH_VISION_WAIT_S in all.
+# Frames left over are listed in the packet's review queue (see docs/FAILURES.md #16).
+FINISH_STALL_S = float(os.getenv("FINISH_STALL_S", "60"))  # one full vision request time-out
+FINISH_VISION_WAIT_S = float(os.getenv("FINISH_VISION_WAIT_S", "180"))
 
 # Capture quality thresholds (tuned on our own frames, see docs/FAILURES.md).
 BLUR_MIN = float(os.getenv("BLUR_MIN", "60"))        # variance of Laplacian

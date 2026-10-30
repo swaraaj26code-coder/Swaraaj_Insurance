@@ -197,6 +197,9 @@ async def _finish(s: dict) -> dict:
     sweep = s["sweep"]
     result = await sweep.finish()
     summary = live.packet_summary(result)
+    if s.get("packet_announced"):   # end_sweep and the End button both finished: announce once
+        return {"summary": summary, "report": f"/sweeps/{sweep.id}/report.html"}
+    s["packet_announced"] = True
     await _broadcast(sweep.id, {"type": "packet", "url": f"/sweeps/{sweep.id}/report.html",
                                 "json": f"/sweeps/{sweep.id}/claim_packet.json", "summary": summary,
                                 "time_to_packet_s": result["metrics"]["time_to_packet_s"]})

@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 
 from google import genai
@@ -20,6 +21,21 @@ log = logging.getLogger(__name__)
 _limiter = RateLimiter(config.VISION_RPM)
 _client: genai.Client | None = None
 _client_loop = None
+_quota_until = 0.0  # monotonic time until which the key's daily vision quota is known to be used up
+
+
+class QuotaExhausted(RuntimeError):
+    """The daily vision quota is used up; no call can succeed until it resets."""
+
+
+def _daily_quota_reset_s(exc: Exception) -> float | None:
+    """Seconds until a per-day quota resets if exc is that 429, else None. A per-minute 429 clears in
+    seconds and is worth a retry; retrying a per-day one only delayed the packet (FAILURES #16)."""
+    text = str(exc)
+    if "RESOURCE_EXHAUSTED" not in text or "PerDay" not in text:
+        return None
+    m = re.search(r"retryDelay'?:\s*'(\d+)", text)
+    return float(m.group(1)) if m else 3600.0
 
 CATEGORIES = ["shelving", "furniture", "lighting", "art", "rug", "electronics", "appliance", "decor", "plant", "other"]
 
@@ -120,6 +136,10 @@ async def analyse(jpeg: bytes, kind: str) -> dict:
     if hit:
         hit["_meta"] = {**hit.get("_meta", {}), "latency_s": 0.0, "cached": True, "in_tokens": 0, "out_tokens": 0}
         return hit
+    global _quota_until
+    if time.monotonic() < _quota_until:
+        hours = (_quota_until - time.monotonic()) / 3600
+        raise QuotaExhausted(f"429 RESOURCE_EXHAUSTED: daily vision quota used up; it resets in about {hours:.1f} h")
     await _limiter.wait()
     started = time.monotonic()
     cfg = types.GenerateContentConfig(
@@ -139,6 +159,10 @@ async def analyse(jpeg: bytes, kind: str) -> dict:
             ), 60)
             break
         except Exception as exc:
+            reset_s = _daily_quota_reset_s(exc)
+            if reset_s is not None:
+                _quota_until = time.monotonic() + reset_s
+                raise
             text = f'{getattr(exc, "code", "")} {getattr(exc, "status", "")} {type(exc).__name__}'
             if attempt == 2 or not any(t in text for t in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "Timeout")):
                 raise

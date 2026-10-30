@@ -38,7 +38,7 @@ async def replay(src: Path) -> Path:
     for e in controls:
         if e["event"] == "fact":
             sweep.facts.append({k: e[k] for k in ("kind", "target", "note", "t")})
-    result = await sweep.finish()
+    result = await sweep.finish(vision_wait_s=float("inf"))  # offline: wait for every frame while vision progresses
     print(json.dumps(result["totals"], indent=1))
     print(f"room: {result['room']['floor_area_m2']} m2 floor, {result['room']['wall_area_m2']} m2 walls")
     print(f"packet: {sweep.dir / 'claim_packet.json'}")

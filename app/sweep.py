@@ -22,12 +22,21 @@ from rapidfuzz import fuzz
 
 from . import config, identify, merge, packet, pricing, quality, report, room, scale, vision
 from .explain import explain
+from .ratelimit import map_threads
 from .tracker import ShelfTracker, sheet_to_shelf_scale, to_shelf
 
 log = logging.getLogger(__name__)
 A4_AREA = config.REF_LONG_CM * config.REF_SHORT_CM
 STANDARD_HEIGHT_CM = 19.8  # B-format paperback, last-resort scale prior
 VISION_WORKERS = 3
+
+
+def _identify_safely(reading: dict) -> dict:
+    try:
+        return identify.identify(reading)
+    except Exception as exc:
+        log.warning("Identify failed: %s", exc)
+        return {**identify.identify({"title_text": ""}), "review": f"catalogue lookup failed: {exc}"}
 
 
 class Sweep:
@@ -64,10 +73,13 @@ class Sweep:
         self.last_book_key = ""
         self.last_room_kf = -99.0
         self.queue: asyncio.Queue = asyncio.Queue()
+        self.inflight: set[int] = set()      # frames being analysed right now
+        self.last_vision_ok = 0.0            # monotonic time of the last frame vision finished
         self.workers = [asyncio.create_task(self._vision_worker()) for _ in range(VISION_WORKERS)]
         self.pricing_task = asyncio.create_task(self._pricing_loop())
         self.finished = False
         self.result: dict | None = None
+        self._finishing: asyncio.Task | None = None
         self._log_event({"event": "start", "country": country, "currency": currency})
 
     # ---- segment control (called by the live agent's tools) -------------------
@@ -199,8 +211,10 @@ class Sweep:
     async def _vision_worker(self):
         while True:
             frame, seg, placement, jpeg, img = await self.queue.get()
+            self.inflight.add(frame["idx"])
             try:
                 result = await vision.analyse(jpeg, seg["kind"])
+                self.last_vision_ok = time.monotonic()
                 self.timings["vision"].append(result["_meta"]["latency_s"])
                 self.vision_usage["calls"] += 1
                 self.vision_usage["in_tokens"] += result["_meta"]["in_tokens"]
@@ -208,12 +222,16 @@ class Sweep:
                 (self.dir / "frames" / f'{frame["idx"]:05d}.vision.json').write_text(json.dumps(result), encoding="utf-8")
                 await self._ingest(frame, seg, placement, img, result)
             except Exception as exc:
-                log.exception("Vision failed on frame %s", frame["idx"])
+                if isinstance(exc, vision.QuotaExhausted):
+                    log.warning("Vision skipped frame %s: %s", frame["idx"], exc)
+                else:
+                    log.exception("Vision failed on frame %s", frame["idx"])
                 self._log_event({"event": "vision_error", "frame": frame["idx"], "error": str(exc)[:200]})
                 if self.now() - self.said.get("vision-error", -99) > 20:
                     self.said["vision-error"] = self.now()
                     await self.notify({"type": "warning", "text": "Frames are not being analysed: " + explain(exc)})
             finally:
+                self.inflight.discard(frame["idx"])
                 self.queue.task_done()
 
     async def _ingest(self, frame, seg, placement, img, result):
@@ -380,17 +398,17 @@ class Sweep:
                 b["scale_method"] = "no scale available"
 
     async def identify_new(self, books: list[dict]):
-        todo = [b for b in books if b["key"] not in self.ids]
+        # Several catalogue lookups at a time: one by one, a shelf of new spines held up the
+        # vision worker that found them for many seconds (FAILURES #16).
+        todo = {b["key"]: b["reading"] for b in books if b["key"] not in self.ids}
         if not todo:
             return
         started = time.monotonic()
-        for b in todo:
-            try:
-                self.ids[b["key"]] = await asyncio.to_thread(identify.identify, b["reading"])
-            except Exception as exc:
-                log.warning("Identify failed: %s", exc)
-                self.ids[b["key"]] = {**identify.identify({"title_text": ""}), "review": f"catalogue lookup failed: {exc}"}
-            b["ident"] = self.ids[b["key"]]
+        found = await map_threads(_identify_safely, [(r,) for r in todo.values()], config.LOOKUP_CONCURRENCY)
+        self.ids.update(zip(todo, found))
+        for b in books:
+            if b["key"] in todo:
+                b["ident"] = self.ids[b["key"]]
         self.timings["identify"].append(round(time.monotonic() - started, 2))
 
     async def publish_inventory(self):
@@ -430,14 +448,47 @@ class Sweep:
         self.timings["pricing_books"].append(round(time.monotonic() - started, 2))
 
     # ---- finish -----------------------------------------------------------------
-    async def finish(self) -> dict:
-        if self.result:
-            return self.result
+    async def finish(self, vision_wait_s: float | None = None) -> dict:
+        """Build the packet once. The agent's end_sweep and the End button can both ask; the
+        second caller waits for the first instead of building it again (FAILURES #16).
+        vision_wait_s: cap on waiting for queued frames (default FINISH_VISION_WAIT_S)."""
+        if self._finishing is None:
+            self._finishing = asyncio.create_task(self._finish(vision_wait_s or config.FINISH_VISION_WAIT_S))
+        return await asyncio.shield(self._finishing)
+
+    async def _drain_vision(self, max_wait_s: float) -> list[int]:
+        """Wait for the frames still queued for vision while it makes progress; return the ones left.
+        Waiting for all of them let a struggling service (60 s time-outs retried, 503s, a used-up
+        quota) hold the packet for minutes (FAILURES #16)."""
+        started = time.monotonic()
+        join = asyncio.ensure_future(self.queue.join())
+        while not join.done():
+            await asyncio.wait({join}, timeout=1.0)
+            now = time.monotonic()
+            stalled = now - max(self.last_vision_ok, started) > config.FINISH_STALL_S
+            if not join.done() and (stalled or now - started > max_wait_s):
+                join.cancel()
+                break
+        left = sorted(self.inflight)
+        while not self.queue.empty():
+            left.append(self.queue.get_nowait()[0]["idx"])
+            self.queue.task_done()
+        if left:
+            self._log_event({"event": "frames_not_analysed", "frames": left})
+        return left
+
+    async def _timed(self, name: str, coro):
+        started = time.monotonic()
+        out = await coro
+        self.timings[name].append(round(time.monotonic() - started, 2))
+        return out
+
+    async def _finish(self, vision_wait_s: float) -> dict:
         self.ended_at = time.monotonic()
         self.finished = True
         self._log_event({"event": "end"})
         await self.notify({"type": "status", "text": f"Sweep ended. Finishing {self.queue.qsize()} queued frames…"})
-        await self.queue.join()
+        not_analysed = await self._drain_vision(vision_wait_s)
         for w in self.workers:
             w.cancel()
         self.pricing_task.cancel()
@@ -445,29 +496,34 @@ class Sweep:
         books, warnings = self.books()
         await self.identify_new(books)
         await self.notify({"type": "status", "text": "Pricing books and items…"})
-        await self.price_pending()
-        books, warnings = self.books()
-        started = time.monotonic()
-        item_prices = await pricing.price_items(
-            [{"category": i["category"], "description": i["description"], "brand_model": i["brand_model"],
-              "search_term": i.get("search_term", "")} for i in self.items],
-            self.country, self.currency)
-        self.timings["pricing_items"].append(round(time.monotonic() - started, 2))
         # Second locale: re-price the first 10 identified books to show locale is a setting.
         sample = []
         for b in books:
             ident = b["ident"]
             if ident and ident["status"] == "identified" and len(sample) < 10:
                 sample.append({"id": "", "title": ident["title"], "author": ident["author"], "isbn": ident["isbn"]})
-        started = time.monotonic()
-        second = await pricing.price_books(sample, config.SECOND_COUNTRY, config.SECOND_CURRENCY) if sample else {}
-        self.timings["pricing_second_locale"].append(round(time.monotonic() - started, 2))
+        # The three pricing stages are independent, so they run side by side.
+        _, item_prices, second = await asyncio.gather(
+            self.price_pending(),
+            self._timed("pricing_items", pricing.price_items(
+                [{"category": i["category"], "description": i["description"], "brand_model": i["brand_model"],
+                  "search_term": i.get("search_term", "")} for i in self.items],
+                self.country, self.currency)),
+            self._timed("pricing_second_locale",
+                        pricing.price_books(sample, config.SECOND_COUNTRY, config.SECOND_CURRENCY) if sample else asyncio.sleep(0, {})))
+        books, warnings = self.books()
+        if not_analysed:
+            shown = ", ".join(map(str, not_analysed[:12])) + (", …" if len(not_analysed) > 12 else "")
+            warnings.append(f"{len(not_analysed)} captured frame(s) were not analysed because the vision service was slow, "
+                            f"overloaded or out of quota (frames {shown}); books or items seen only in them are missing. "
+                            f"Analyse them later with: python -m app.replay data/sweeps/{self.id}")
         started = time.monotonic()
         room_result = room.compute(sorted(self.walls.values(), key=lambda w: w["index"]))
         self.timings["room"].append(round(time.monotonic() - started, 3))
         self.timings["post_sweep_to_packet"].append(round(time.monotonic() - stage, 2))
         result = packet.build(self, books, warnings, item_prices, sample, second, room_result)
         result["metrics"]["time_to_packet_s"] = round(time.monotonic() - self.ended_at, 1)
+        result["metrics"]["frames_not_analysed"] = len(not_analysed)
         (self.dir / "claim_packet.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
         (self.dir / "report.html").write_text(report.render(result), encoding="utf-8")
         self.result = result

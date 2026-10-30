@@ -113,6 +113,20 @@
   - Both bookcases measured at 80 × 180 cm with 5 shelves.
   - Wall 4 then failed only because the free daily quota was fully used (still 429 after the retries). It was reported as such, not guessed.
 
+### 16. The claim packet took over 5 minutes after "end sweep"
+- **Found by:** the policyholder, on a 100 s front-view sweep (`20261030-124814-abf7`): `time_to_packet_s` **323.4**, of which building the packet (identify, price, room) was **15 s**.
+- **Root cause 1 (≈ 308 s):** `finish()` waited on `queue.join()` for **every** queued keyframe. Google's free tier was overloaded: calls hung until the 60 s time-out, then 503, then the daily quota ran out (429). Each frame went through 3 attempts (up to ~190 s), 3 workers at a time. Even the successful calls in the logs had a median of **148 s** (min 7 s) for the same reason.
+- **Root cause 2:** a per-**day** 429 was retried like a per-minute one, and every later frame repeated the same 3 failing calls.
+- **Root cause 3:** shop pricing and catalogue lookups ran one after another: 10 books took **52.8 s** with a cold cache. Identification also ran inside the vision worker, so a shelf of new spines held up vision during the sweep.
+- **Root cause 4:** the agent's `end_sweep` and the End button both called `finish()`, which built the packet twice (`calls: 2` in every stage).
+- **Fix:**
+  - `finish()` waits for queued frames only while vision makes progress: it stops after `FINISH_STALL_S` (60 s, one request time-out) without a result, or `FINISH_VISION_WAIT_S` (180 s) in all. Frames left over go into the review queue by number, with the `app.replay` command that analyses them later (replay waits for all of them).
+  - A per-day 429 is not retried, and vision skips the call for later frames until the quota resets.
+  - Shop pricing, item pricing and identification run `LOOKUP_CONCURRENCY` (4) lookups at a time. The three finish-time pricing stages run side by side.
+  - `finish()` builds once; a second caller waits for the first, and the packet is announced once.
+  - Regression tests for the stall cut-off, the single build and the daily-quota cut-off.
+- **After (measured):** cold-cache pricing of the same 10 books 52.8 → 25.8 s and of the 7 items 8.2 → 6.4 s, with identical results. For the sweep above, the new rules stop waiting 60 s after the end instead of 308 s. That packet would have reported its 15 unanalysed frames for replay rather than the 7 items the last 2 frames found after ~77 s; `FINISH_STALL_S` sets that trade-off.
+
 ## Three worst errors in the demo run — TODO (real sweep)
 
 For each one: what happened (with packet line ids and frames), root cause, and what we'd change.
